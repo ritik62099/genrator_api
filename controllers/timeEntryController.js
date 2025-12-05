@@ -1,14 +1,26 @@
 // backend/controllers/timeEntryController.js
 const TimeEntry = require("../models/TimeEntry");
 
-// Helper
-function calculateMinutes(startTime, endTime) {
-  const [sh, sm] = startTime.split(":").map(Number);
-  const [eh, em] = endTime.split(":").map(Number);
+// Helper: generator meter diff
+function calculateGeneratorDiff(startHour, startMinute, endHour, endMinute) {
+  const sh = Number(startHour);
+  const sm = Number(startMinute);
+  const eh = Number(endHour);
+  const em = Number(endMinute);
+
+  if ([sh, sm, eh, em].some((n) => Number.isNaN(n))) return null;
 
   const start = sh * 60 + sm;
   const end = eh * 60 + em;
-  return end - start;
+  const diff = end - start;
+
+  if (diff <= 0) return null;
+
+  return {
+    diffHours: Math.floor(diff / 60),
+    diffMinutes: diff % 60,
+    totalMinutes: diff,
+  };
 }
 
 // GET /api/entries
@@ -25,25 +37,41 @@ async function getEntries(req, res) {
 // POST /api/entries
 async function createEntry(req, res) {
   try {
-    const { date, startTime, endTime } = req.body;
+    const { date, startHour, startMinute, endHour, endMinute } = req.body;
 
-    if (!date || !startTime || !endTime) {
+    if (
+      !date &&
+      date !== "" &&
+      startHour === undefined &&
+      startMinute === undefined &&
+      endHour === undefined &&
+      endMinute === undefined
+    ) {
       return res.status(400).json({ error: "All fields required" });
     }
 
-    const totalMinutes = calculateMinutes(startTime, endTime);
+    const calc = calculateGeneratorDiff(
+      startHour,
+      startMinute,
+      endHour,
+      endMinute
+    );
 
-    if (totalMinutes <= 0) {
+    if (!calc) {
       return res
         .status(400)
-        .json({ error: "End time should be after start time" });
+        .json({ error: "End reading, start reading se bada hona chahiye" });
     }
 
     const newEntry = await TimeEntry.create({
       date,
-      startTime,
-      endTime,
-      totalMinutes,
+      startHour,
+      startMinute,
+      endHour,
+      endMinute,
+      diffHours: calc.diffHours,
+      diffMinutes: calc.diffMinutes,
+      totalMinutes: calc.totalMinutes,
     });
 
     res.status(201).json(newEntry);
@@ -57,18 +85,30 @@ async function createEntry(req, res) {
 async function updateEntry(req, res) {
   try {
     const { id } = req.params;
-    const { date, startTime, endTime } = req.body;
+    const { date, startHour, startMinute, endHour, endMinute } = req.body;
 
-    if (!date || !startTime || !endTime) {
+    if (
+      !date &&
+      date !== "" &&
+      startHour === undefined &&
+      startMinute === undefined &&
+      endHour === undefined &&
+      endMinute === undefined
+    ) {
       return res.status(400).json({ error: "All fields required" });
     }
 
-    const totalMinutes = calculateMinutes(startTime, endTime);
+    const calc = calculateGeneratorDiff(
+      startHour,
+      startMinute,
+      endHour,
+      endMinute
+    );
 
-    if (totalMinutes <= 0) {
+    if (!calc) {
       return res
         .status(400)
-        .json({ error: "End time should be after start time" });
+        .json({ error: "End reading, start reading se bada hona chahiye" });
     }
 
     const entry = await TimeEntry.findById(id);
@@ -77,9 +117,13 @@ async function updateEntry(req, res) {
     }
 
     entry.date = date;
-    entry.startTime = startTime;
-    entry.endTime = endTime;
-    entry.totalMinutes = totalMinutes;
+    entry.startHour = startHour;
+    entry.startMinute = startMinute;
+    entry.endHour = endHour;
+    entry.endMinute = endMinute;
+    entry.diffHours = calc.diffHours;
+    entry.diffMinutes = calc.diffMinutes;
+    entry.totalMinutes = calc.totalMinutes;
 
     await entry.save();
 
