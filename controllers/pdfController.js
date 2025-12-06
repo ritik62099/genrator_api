@@ -90,16 +90,19 @@ exports.generatePDF = async (req, res) => {
         groups[key] = {
           label: `${monthNames[monthIndex]} ${year}`,
           items: [],
-          totalMinutes: 0,
+          totalMinutes: 0, // sirf running days ka sum
         };
       }
+
+      const isClosed = entry.closed === true;
 
       let totalMinutes = entry.totalMinutes;
       let diffHours = entry.diffHours;
       let diffMinutes = entry.diffMinutes;
 
-      // safe fallback if diffHours not saved
+      // safe fallback if diffHours not saved (old data)
       if (
+        !isClosed &&
         (diffHours == null || diffMinutes == null) &&
         entry.startHour != null &&
         entry.startMinute != null &&
@@ -116,7 +119,8 @@ exports.generatePDF = async (req, res) => {
         }
       }
 
-      if (typeof totalMinutes === "number" && totalMinutes > 0) {
+      // Month total me sirf running time add karo, closed days skip
+      if (!isClosed && typeof totalMinutes === "number" && totalMinutes > 0) {
         groups[key].totalMinutes += totalMinutes;
       }
 
@@ -133,11 +137,11 @@ exports.generatePDF = async (req, res) => {
     let rowY = drawTableHeader(120);
 
     let grandTotalMinutes = 0;
-    let dayCount = 0;
+    let dayCount = 0; // sirf running days
 
     const groupKeys = Object.keys(groups).sort(); // oldest month first
 
-    groupKeys.forEach((key, idx) => {
+    groupKeys.forEach((key) => {
       const group = groups[key];
 
       // Month heading with total
@@ -158,8 +162,7 @@ exports.generatePDF = async (req, res) => {
 
       rowY += 22;
 
-      // table header just below for first month,
-      // for others page may already have one but safe to redraw:
+      // table header
       rowY = drawTableHeader(rowY);
 
       doc.fontSize(11).font("Helvetica");
@@ -167,31 +170,45 @@ exports.generatePDF = async (req, res) => {
       group.items.forEach((entry) => {
         rowY = ensureSpace(rowY, 24);
 
-        const durationText =
-          entry._totalMinutes && entry._totalMinutes > 0
-            ? `${entry._diffHours}h ${entry._diffMinutes}m (${entry._totalMinutes} min)`
-            : "-";
+        const isClosed = entry.closed === true;
 
-        if (entry._totalMinutes && entry._totalMinutes > 0) {
+        const durationText = isClosed
+          ? "Generator Closed (No Run)"
+          : entry._totalMinutes && entry._totalMinutes > 0
+          ? `${entry._diffHours}h ${entry._diffMinutes}m (${entry._totalMinutes} min)`
+          : "-";
+
+        // grand totals me closed days include nahi
+        if (!isClosed && entry._totalMinutes && entry._totalMinutes > 0) {
           grandTotalMinutes += entry._totalMinutes;
           dayCount += 1;
         }
 
+        // Date
         doc.text(entry.date || "-", columns.date, rowY);
-        doc.text(
-          entry.startHour != null
-            ? `${entry.startHour}h ${entry.startMinute}m`
-            : "-",
-          columns.start,
-          rowY
-        );
-        doc.text(
-          entry.endHour != null
-            ? `${entry.endHour}h ${entry.endMinute}m`
-            : "-",
-          columns.end,
-          rowY
-        );
+
+        // Start / End
+        if (isClosed) {
+          doc.text("CLOSED", columns.start, rowY);
+          doc.text("CLOSED", columns.end, rowY);
+        } else {
+          doc.text(
+            entry.startHour != null
+              ? `${entry.startHour}h ${entry.startMinute}m`
+              : "-",
+            columns.start,
+            rowY
+          );
+          doc.text(
+            entry.endHour != null
+              ? `${entry.endHour}h ${entry.endMinute}m`
+              : "-",
+            columns.end,
+            rowY
+          );
+        }
+
+        // Duration / Status
         doc.text(durationText, columns.duration, rowY);
 
         rowY += 20;
@@ -225,7 +242,11 @@ exports.generatePDF = async (req, res) => {
       50,
       rowY
     );
-    doc.text(`Total Working Days (valid readings): ${dayCount}`, 50, rowY + 18);
+    doc.text(
+      `Total Working Days (valid readings): ${dayCount}`,
+      50,
+      rowY + 18
+    );
     doc.text(`Average Per Day: ${avg} hrs/day`, 50, rowY + 36);
 
     doc.end();
