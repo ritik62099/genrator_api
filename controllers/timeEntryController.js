@@ -37,14 +37,35 @@ async function getEntries(req, res) {
 // POST /api/entries
 async function createEntry(req, res) {
   try {
-    const { date, startHour, startMinute, endHour, endMinute } = req.body;
+    const { date, startHour, startMinute, endHour, endMinute, closed } =
+      req.body;
 
+    if (!date) {
+      return res.status(400).json({ error: "Date required" });
+    }
+
+    // 🔥 CLOSED DAY: no diff validation
+    if (closed) {
+      const newEntry = await TimeEntry.create({
+        date,
+        startHour: startHour ?? 0,
+        startMinute: startMinute ?? 0,
+        endHour: endHour ?? 0,
+        endMinute: endMinute ?? 0,
+        diffHours: 0,
+        diffMinutes: 0,
+        totalMinutes: 0,
+        closed: true,
+      });
+
+      return res.status(201).json(newEntry);
+    }
+
+    // 🔥 Normal working day
     if (
-      !date &&
-      date !== "" &&
-      startHour === undefined &&
-      startMinute === undefined &&
-      endHour === undefined &&
+      startHour === undefined ||
+      startMinute === undefined ||
+      endHour === undefined ||
       endMinute === undefined
     ) {
       return res.status(400).json({ error: "All fields required" });
@@ -58,9 +79,9 @@ async function createEntry(req, res) {
     );
 
     if (!calc) {
-      return res
-        .status(400)
-        .json({ error: "End reading, start reading se bada hona chahiye" });
+      return res.status(400).json({
+        error: "End reading, start reading se bada hona chahiye",
+      });
     }
 
     const newEntry = await TimeEntry.create({
@@ -72,6 +93,7 @@ async function createEntry(req, res) {
       diffHours: calc.diffHours,
       diffMinutes: calc.diffMinutes,
       totalMinutes: calc.totalMinutes,
+      closed: false,
     });
 
     res.status(201).json(newEntry);
@@ -81,18 +103,43 @@ async function createEntry(req, res) {
   }
 }
 
-// PUT /api/entries/:id  (edit)
+// PUT /api/entries/:id
 async function updateEntry(req, res) {
   try {
     const { id } = req.params;
-    const { date, startHour, startMinute, endHour, endMinute } = req.body;
+    const { date, startHour, startMinute, endHour, endMinute, closed } =
+      req.body;
 
+    const entry = await TimeEntry.findById(id);
+    if (!entry) {
+      return res.status(404).json({ error: "Entry not found" });
+    }
+
+    if (!date) {
+      return res.status(400).json({ error: "Date required" });
+    }
+
+    // 🔥 CLOSED DAY UPDATE
+    if (closed) {
+      entry.date = date;
+      entry.startHour = startHour ?? 0;
+      entry.startMinute = startMinute ?? 0;
+      entry.endHour = endHour ?? 0;
+      entry.endMinute = endMinute ?? 0;
+      entry.diffHours = 0;
+      entry.diffMinutes = 0;
+      entry.totalMinutes = 0;
+      entry.closed = true;
+
+      await entry.save();
+      return res.json(entry);
+    }
+
+    // 🔥 Normal working day update
     if (
-      !date &&
-      date !== "" &&
-      startHour === undefined &&
-      startMinute === undefined &&
-      endHour === undefined &&
+      startHour === undefined ||
+      startMinute === undefined ||
+      endHour === undefined ||
       endMinute === undefined
     ) {
       return res.status(400).json({ error: "All fields required" });
@@ -106,14 +153,9 @@ async function updateEntry(req, res) {
     );
 
     if (!calc) {
-      return res
-        .status(400)
-        .json({ error: "End reading, start reading se bada hona chahiye" });
-    }
-
-    const entry = await TimeEntry.findById(id);
-    if (!entry) {
-      return res.status(404).json({ error: "Entry not found" });
+      return res.status(400).json({
+        error: "End reading, start reading se bada hona chahiye",
+      });
     }
 
     entry.date = date;
@@ -124,6 +166,7 @@ async function updateEntry(req, res) {
     entry.diffHours = calc.diffHours;
     entry.diffMinutes = calc.diffMinutes;
     entry.totalMinutes = calc.totalMinutes;
+    entry.closed = false;
 
     await entry.save();
 

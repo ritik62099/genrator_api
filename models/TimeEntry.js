@@ -1,4 +1,3 @@
-// backend/models/TimeEntry.js
 const mongoose = require("mongoose");
 
 const timeEntrySchema = new mongoose.Schema(
@@ -14,6 +13,8 @@ const timeEntrySchema = new mongoose.Schema(
     diffHours: { type: Number, required: true },
     diffMinutes: { type: Number, required: true },
     totalMinutes: { type: Number, required: true },
+
+    closed: { type: Boolean, default: false }, // 🔥 new
   },
   { timestamps: true }
 );
